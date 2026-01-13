@@ -27,19 +27,6 @@ from django.conf import settings
 from django.utils import timezone
 from django.urls import reverse
 
-# TTS
-try:
-    from gtts import gTTS
-except ImportError:
-    gTTS = None
-    logging.warning("gTTS não instalado. Funcionalidade de TTS desabilitada.")
-
-try:
-    import pyttsx3
-except ImportError:
-    pyttsx3 = None
-    logging.warning("pyttsx3 não instalado. Usando gTTS como fallback.")
-
 # Módulos para leitura de arquivos, garantindo compatibilidade com o Gemini.
 try:
     import PyPDF2
@@ -54,6 +41,13 @@ except ImportError as e:
     docx = None
     BeautifulSoup = None
     chardet = None
+
+# Módulos para TTS
+try:
+    from gtts import gTTS
+except ImportError as e:
+    logging.error(f"Erro de importação de gTTS: {e}. Instale com 'pip install gTTS'.")
+    gTTS = None
 
 # Importa todos os modelos necessários.
 from .models import (
@@ -2272,6 +2266,7 @@ def planos(request):
 @sync_to_async
 def contato(request):
     """View para a página de Contato."""
+    return render(request, 'contato.html')
 @require_POST
 @csrf_exempt
 def gerar_tts(request):
@@ -2305,74 +2300,9 @@ def gerar_tts(request):
         
         print("Gerando TTS...")
         try:
-            if pyttsx3:
-                print("Usando pyttsx3 para voz mais natural...")
-                engine = pyttsx3.init()
-                engine.setProperty('rate', 200)  # Velocidade um pouco mais rápida
-                engine.setProperty('volume', 0.9)  # Volume mais alto
-                # Usar voz padrão
-                
-                # Limpar texto para TTS
-                import re
-                from html import unescape
-                
-                def clean_text_for_tts(text):
-                    # Remover tags HTML
-                    text = re.sub(r'<[^>]+>', '', text)
-                    # Decodificar entidades HTML
-                    text = unescape(text)
-                    # Remover elementos de markdown
-                    text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)  # Headers
-                    text = re.sub(r'\*{1,3}', '', text)  # Bold/italic markers
-                    text = re.sub(r'`{1,3}', '', text)  # Code markers
-                    text = re.sub(r'~{2}', '', text)  # Strikethrough
-                    text = re.sub(r'={3,}', '', text)  # Headers underlines
-                    text = re.sub(r'-{3,}', '', text)  # Horizontal rules
-                    text = re.sub(r'\+{1,}', '', text)  # List markers
-                    text = re.sub(r'^\s*\d+\.\s*', '', text, flags=re.MULTILINE)  # Numbered lists
-                    text = re.sub(r'^\s*[-*+]\s*', '', text, flags=re.MULTILINE)  # Bullet lists
-                    text = re.sub(r'^>\s*', '', text, flags=re.MULTILINE)  # Blockquotes
-                    text = re.sub(r'\[.*?\]\(.*?\)', '', text)  # Links
-                    text = re.sub(r'!\[.*?\]\(.*?\)', '', text)  # Images
-                    text = re.sub(r'```.*?```', '', text, flags=re.DOTALL)  # Code blocks
-                    # Remover linhas vazias e espaços extras
-                    text = re.sub(r'\n\s*\n', '\n', text)
-                    text = re.sub(r'\n+', ' ', text)
-                    text = re.sub(r'\s+', ' ', text).strip()
-                    return text
-                
-                texto_limpo = clean_text_for_tts(mensagem.texto)
-                if not texto_limpo:
-                    return JsonResponse({'success': False, 'error': 'Texto limpo vazio para gerar áudio.'}, status=400)
-                
-                # Salvar em arquivo temporário
-                import tempfile
-                import os
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
-                    temp_path = temp_file.name
-                
-                engine.save_to_file(texto_limpo, temp_path)
-                engine.runAndWait()
-                
-                # Ler o arquivo temporário e salvar no storage
-                with open(temp_path, 'rb') as f:
-                    audio_content = f.read()
-                os.unlink(temp_path)  # Remover arquivo temporário
-                
-                audio_filename = f"tts/{uuid.uuid4()}.wav"
-                audio_path = default_storage.save(audio_filename, ContentFile(audio_content))
-                audio_url = default_storage.url(audio_path)
-                print(f"Áudio salvo com pyttsx3: {audio_url}")
-                
-                # Salvar nos metadados
-                if not mensagem.metadados:
-                    mensagem.metadados = {}
-                mensagem.metadados['audio_url'] = audio_url
-                mensagem.save(update_fields=['metadados'])
-                return JsonResponse({'success': True, 'audio_url': audio_url})
-            elif gTTS:
+            if gTTS:
                 print("Usando gTTS...")
-                tts = gTTS(text=mensagem.texto, lang='pt', slow=False, tld='pt')
+                tts = gTTS(text=mensagem.texto, lang='pt', slow=False, tld='com')
                 audio_filename = f"tts/{uuid.uuid4()}.mp3"
                 audio_path = default_storage.save(audio_filename, ContentFile(b''))
                 with default_storage.open(audio_path, 'wb') as audio_file:
